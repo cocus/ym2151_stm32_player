@@ -29,6 +29,7 @@
 #include <stdarg.h> //for va_list var arg functions
 #include <ctype.h>
 #include "vgmheader.h"
+#include "megastream.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -141,7 +142,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 256);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -426,6 +427,8 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+volatile int32_t waitSamples = 0;
+
 // Callback: timer has rolled over
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -433,6 +436,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim4)
   {
    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
+   if (waitSamples)
+   {
+    waitSamples--;
+   }
   }
 }
 
@@ -511,33 +518,443 @@ void ym2151_reset(void)
 }
 
 
+void samples_wait(uint32_t samples)
+{
+    waitSamples = samples;
+    while(waitSamples > 0) { };
+}
+
+//MegaStreamContext_t stream;
+//uint8_t buf[VGM_BUF_SIZE];
+
+uint32_t loopPos = 0; //The location of the 0x66 command
+uint16_t loopCount = 0;
+//volatile int32_t waitSamples = 0;
+uint16_t badCommandCount = 0;
+
 void process_vgm(char* path)
 {
-    vgm_header vgm;
+    vgm_header header;
 
     FIL fil; 		//File handle
     FRESULT fres; //Result after operations
 
-    myprintf("%s: processing '%s'\r\n", __func__, path);
+    myprintf("%s: processing '%s'\n", __func__, path);
 
     fres = f_open(&fil, path, FA_READ);
     if (fres != FR_OK)
     {
-        myprintf("f_open error (%i)\r\n", fres);
+        myprintf("f_open error (%i)\n", fres);
         return;
     }
 
     uint32_t read = 0;
-    fres = f_read(&fil, &vgm, sizeof(vgm), &read);
+    fres = f_read(&fil, &header, sizeof(header), &read);
     if (fres != FR_OK)
     {
-        myprintf("f_read error (%i)\r\n", fres);
+        myprintf("f_read error (%i)\n", fres);
         goto cleanup;
     }
-    if (read != sizeof(vgm))
+    if (read != sizeof(header))
     {
-        myprintf("f_read size mismatch (%i)\r\n", fres);
+        myprintf("f_read size mismatch (%i)\n", fres);
         goto cleanup;
+    }
+
+    myprintf("  indent = 0x%x\n", header.indent);
+    myprintf("  EoF = 0x%x\n", header.EoF);
+    myprintf("  version = 0x%x\n", header.version);
+    myprintf("  sn76489Clock = 0x%x\n", header.sn76489Clock);
+    myprintf("  ym2413Clock = 0x%x\n", header.ym2413Clock);
+    myprintf("  gd3Offset = 0x%x\n", header.gd3Offset);
+    myprintf("  totalSamples = 0x%x\n", header.totalSamples);
+    myprintf("  loopOffset = 0x%x\n", header.loopOffset);
+    myprintf("  loopNumSamples = 0x%x\n", header.loopNumSamples);
+    myprintf("  rate = 0x%x\n", header.rate);
+    myprintf("  snX = 0x%x\n", header.snX);
+    myprintf("  ym2612Clock = 0x%x\n", header.ym2612Clock);
+    myprintf("  ym2151Clock = 0x%x\n", header.ym2151Clock);
+    myprintf("  vgmDataOffset = 0x%x\n", header.vgmDataOffset);
+    myprintf("  segaPCMClock = 0x%x\n", header.segaPCMClock);
+    myprintf("  spcmInterface = 0x%x\n", header.spcmInterface);
+    myprintf("  rf5C68clock = 0x%x\n", header.rf5C68clock);
+    myprintf("  ym2203clock = 0x%x\n", header.ym2203clock);
+    myprintf("  ym2608clock = 0x%x\n", header.ym2608clock);
+    myprintf("  ym2610clock = 0x%x\n", header.ym2610clock);
+    myprintf("  ym3812clock = 0x%x\n", header.ym3812clock);
+    myprintf("  ym3526clock = 0x%x\n", header.ym3526clock);
+    myprintf("  y8950clock = 0x%x\n", header.y8950clock);
+    myprintf("  ymf262clock = 0x%x\n", header.ymf262clock);
+    myprintf("  ymf278bclock = 0x%x\n", header.ymf278bclock);
+    myprintf("  ymf271clock = 0x%x\n", header.ymf271clock);
+    myprintf("  ymz280Bclock = 0x%x\n", header.ymz280Bclock);
+    myprintf("  rf5C164clock = 0x%x\n", header.rf5C164clock);
+    myprintf("  pwmclock = 0x%x\n", header.pwmclock);
+    myprintf("  ay8910clock = 0x%x\n", header.ay8910clock);
+    myprintf("  ayclockflags = 0x%x\n", header.ayclockflags);
+    myprintf("  vmlblm = 0x%x\n", header.vmlblm);
+    myprintf("  gbdgmclock = 0x%x\n", header.gbdgmclock);
+    myprintf("  nesapuclock = 0x%x\n", header.nesapuclock);
+    myprintf("  multipcmclock = 0x%x\n", header.multipcmclock);
+    myprintf("  upd7759clock = 0x%x\n", header.upd7759clock);
+    myprintf("  okim6258clock = 0x%x\n", header.okim6258clock);
+    myprintf("  ofkfcf = 0x%x\n", header.ofkfcf);
+    myprintf("  okim6295clock = 0x%x\n", header.okim6295clock);
+    myprintf("  k051649clock = 0x%x\n", header.k051649clock);
+    myprintf("  k054539clock = 0x%x\n", header.k054539clock);
+    myprintf("  huc6280clock = 0x%x\n", header.huc6280clock);
+    myprintf("  c140clock = 0x%x\n", header.c140clock);
+    myprintf("  k053260clock = 0x%x\n", header.k053260clock);
+    myprintf("  pokeyclock = 0x%x\n", header.pokeyclock);
+    myprintf("  qsoundclock = 0x%x\n", header.qsoundclock);
+    myprintf("  scspclock = 0x%x\n", header.scspclock);
+    myprintf("  extrahdrofs = 0x%x\n", header.extrahdrofs);
+    myprintf("  wonderswanclock = 0x%x\n", header.wonderswanclock);
+    myprintf("  vsuClock = 0x%x\n", header.vsuClock);
+    myprintf("  saa1099clock = 0x%x\n", header.saa1099clock);
+    myprintf("  es5503clock = 0x%x\n", header.es5503clock);
+    myprintf("  es5506clock = 0x%x\n", header.es5506clock);
+    myprintf("  eschcdxx = 0x%x\n", header.eschcdxx);
+    myprintf("  x1010clock = 0x%x\n", header.x1010clock);
+    myprintf("  c352clock = 0x%x\n", header.c352clock);
+    myprintf("  ga20clock = 0x%x\n", header.ga20clock);
+
+    if (header.vgmDataOffset == 0)
+    {
+        f_lseek(&fil, 0x40);
+    }
+    else
+    {
+        f_lseek(&fil, header.vgmDataOffset + 0x34);
+    }
+
+    if(header.gd3Offset != 0)
+    {
+        loopPos = header.gd3Offset+0x14-1;
+    }
+    else
+    {
+        loopPos = header.EoF+4-1;
+    }
+
+    ym2151_reset();
+
+
+    uint8_t breakit = 0;
+    while(breakit == 0)
+    {
+        uint8_t cmd;
+        uint8_t data;
+        uint8_t addr;
+        uint16_t nsamples;
+        fres = f_read(&fil, &cmd, 1, &read);
+        if (read != 1)
+        {
+            myprintf("read != 1 (%i)\r\n", read);
+            goto cleanup;
+        }
+
+        switch (cmd)
+        {
+            case 0x31:
+            {
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x4f:
+            {
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x50:
+            {
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+
+            case 0x51:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x52:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x53:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x54:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+
+               // myprintf("ym2151_write addr = 0x%x, data = 0x%x\r\n", addr, data);
+                ym2151_write(addr, data);
+                break;
+            }
+            case 0x55:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x56:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x57:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x58:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x59:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5a:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5b:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5c:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5d:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5e:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+            case 0x5f:
+            {
+                f_read(&fil, &addr, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+
+            case 0x61:
+            {
+                f_read(&fil, &nsamples, 2, &read);
+                samples_wait(nsamples);
+                break;
+            }
+            case 0x62:
+            {
+                samples_wait(735);
+                break;
+            }
+            case 0x63:
+            {
+                samples_wait(882);
+                break;
+            }
+            case 0x66:
+            {
+                //Loop
+                //if(maxLoops != 0xFFFF) //If sent to short int max, just loop forever
+                //    loopCount++;
+                breakit = 1;
+                break;
+            }
+            case 0x67:
+            {
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                uint32_t pcmSize;
+                f_read(&fil, &pcmSize, 4, &read);
+                for(uint32_t i=0; i<pcmSize; i++)
+                {
+                    f_read(&fil, &data, 1, &read);
+                }
+            }
+            case 0x68:
+            {
+                myprintf("Not handled 0x68\r\n");
+                break;
+            }
+
+
+            case 0x70:
+            case 0x71:
+            case 0x72:
+            case 0x73:
+            case 0x74:
+            case 0x75:
+            case 0x76:
+            case 0x77:
+            case 0x78:
+            case 0x79:
+            case 0x7A:
+            case 0x7B:
+            case 0x7C:
+            case 0x7D:
+            case 0x7E:
+            case 0x7F:
+            {
+                samples_wait((cmd & 0xf) + 1);
+                break;
+            }
+
+            case 0x80:
+            case 0x81:
+            case 0x82:
+            case 0x83:
+            case 0x84:
+            case 0x85:
+            case 0x86:
+            case 0x87:
+            case 0x88:
+            case 0x89:
+            case 0x8A:
+            case 0x8B:
+            case 0x8C:
+            case 0x8D:
+            case 0x8E:
+            case 0x8F:
+            {
+                break;
+            }
+
+
+            case 0x90:
+            {
+                f_read(&fil, &nsamples, 2, &read);
+                f_read(&fil, &nsamples, 2, &read);
+                break;
+            }
+            case 0x91:
+            {
+                f_read(&fil, &nsamples, 2, &read);
+                f_read(&fil, &nsamples, 2, &read);
+                break;
+            }
+            case 0x92:
+            {
+                f_read(&fil, &data, 1, &read);
+                uint32_t streamFreq;
+                f_read(&fil, &streamFreq, 4, &read);
+                break;
+            }
+            case 0x93:
+            {
+                f_read(&fil, &data, 1, &read);
+                uint32_t streamFreq;
+                f_read(&fil, &streamFreq, 4, &read);
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &streamFreq, 4, &read);
+                break;
+            }
+            case 0x94:
+            {
+                 f_read(&fil, &data, 1, &read);
+                 break;
+            }
+            case 0x95:
+            {
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &nsamples, 2, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+
+
+            case 0xA0:
+            case 0xB0:
+            case 0xB1:
+            case 0xB2:
+            case 0xB5: //Ignore common secondary PCM chips
+            case 0xB6:
+            case 0xB7:
+            case 0xB8:
+            case 0xB9:
+            case 0xBA:
+            case 0xBB:
+            case 0xBC:
+            case 0xBD:
+            case 0xBE:
+            case 0xBF:
+            {
+                f_read(&fil, &nsamples, 2, &read);
+                break;
+            }
+
+            case 0xC0: //24 bit write PCM chips
+            case 0xC1:
+            case 0xC2:
+            case 0xC3:
+            case 0xC4:
+            case 0xC5:
+            case 0xC6:
+            case 0xC7:
+            case 0xC8:
+            case 0xD0:
+            case 0xD1:
+            case 0xD2:
+            case 0xD3:
+            case 0xD4:
+            case 0xD5:
+            case 0xD6:
+            {
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                f_read(&fil, &data, 1, &read);
+                break;
+            }
+
+            case 0xE0:
+            {
+                uint32_t dummy;
+                f_read(&fil, &dummy, 4, &read);
+                break;
+            }
+            case 0xE1:
+            {
+                uint32_t dummy;
+                f_read(&fil, &dummy, 4, &read);
+                break;
+            }
+
+            default:
+            {
+                myprintf("Unhandled case 0x%x\r\n", cmd);
+                break;
+            }
+        }
     }
 
 cleanup:
@@ -558,72 +975,23 @@ void StartDefaultTask(void const * argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
-  myprintf("Hey dude!" __TIME__ " " __DATE__ "\r\n");
+  myprintf("Hey dude!" __TIME__ " " __DATE__ "\n");
+  myprintf("Running at %ld Hz\n", SystemCoreClock);
 
   HAL_Delay(1000); //a short delay is important to let the SD card settle
 
-  //some variables for FatFs
-  FATFS FatFs; 	//Fatfs handle
-  FIL fil; 		//File handle
-  FRESULT fres; //Result after operations
 
-  //Open the file system
-  fres = f_mount(&FatFs, "", 1); //1=mount now
-  if (fres != FR_OK) {
-    myprintf("f_mount error (%i)\r\n", fres);
-    while(1);
-  }
-
-  //Let's get some statistics from the SD card
-  DWORD free_clusters, free_sectors, total_sectors;
-
-  FATFS* getFreeFs;
-
-  fres = f_getfree("", &free_clusters, &getFreeFs);
-  if (fres != FR_OK) {
-    myprintf("f_getfree error (%i)\r\n", fres);
-    while(1);
-  }
-
-  //Formula comes from ChaN's documentation
-  total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
-  free_sectors = free_clusters * getFreeFs->csize;
-
-  myprintf("SD card stats:\r\n%10lu KiB total drive space.\r\n%10lu KiB available.\r\n", total_sectors / 2, free_sectors / 2);
-    FRESULT res;
-    DIR dir;
-    UINT i;
-    static FILINFO fno;
-
-
-  res = f_opendir(&dir, "/");                       /* Open the directory */
-  if (res == FR_OK) {
-      for (;;) {
-          res = f_readdir(&dir, &fno);                   /* Read a directory item */
-          if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
-          if (fno.fattrib & AM_DIR) {                    /* It is a directory */
-
-          } else {                                       /* It is a file. */
-              myprintf("%s\r\n", fno.fname);
-              for(int i = 0; fno.fname[i]; i++){
-                fno.fname[i] = tolower(fno.fname[i]);
-              }
-              if (strstr(fno.fname, ".vgm"))
-              {
-                process_vgm(fno.fname);
-              }
-          }
-      }
-      f_closedir(&dir);
-  }
-
+    HAL_GPIO_WriteNamedPin(YM_RD, 1);
+    HAL_GPIO_WriteNamedPin(YM_WR, 1);
+    HAL_GPIO_WriteNamedPin(YM_CS, 1);
+    HAL_GPIO_WriteNamedPin(YM_A0, 0);
 
   uint32_t ARR_RegisterValue;
   uint32_t PeriodTicks;
   uint32_t Prescalerfactor;
   uint32_t period_cyc;
 
-  period_cyc = SystemCoreClock / 1;
+  period_cyc = SystemCoreClock / 44100;
   Prescalerfactor = (period_cyc / 0x10000) + 1;
   __HAL_TIM_SET_PRESCALER(&htim4, Prescalerfactor - 1);
   PeriodTicks = period_cyc / Prescalerfactor;
@@ -639,6 +1007,64 @@ void StartDefaultTask(void const * argument)
 
   // Start timer in Time base mode. Required when there is no channel used but only update interrupt.
   HAL_TIM_Base_Start_IT(&htim4);
+
+  //some variables for FatFs
+  FATFS FatFs; 	//Fatfs handle
+  FIL fil; 		//File handle
+  FRESULT fres; //Result after operations
+
+  //Open the file system
+  fres = f_mount(&FatFs, "", 1); //1=mount now
+  if (fres != FR_OK) {
+    myprintf("f_mount error (%i)\n", fres);
+    while(1);
+  }
+
+  //Let's get some statistics from the SD card
+  DWORD free_clusters, free_sectors, total_sectors;
+
+  FATFS* getFreeFs;
+
+  fres = f_getfree("", &free_clusters, &getFreeFs);
+  if (fres != FR_OK) {
+    myprintf("f_getfree error (%i)\n", fres);
+    while(1);
+  }
+
+  //Formula comes from ChaN's documentation
+  total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
+  free_sectors = free_clusters * getFreeFs->csize;
+
+  myprintf("SD card stats:\n%10lu KiB total drive space.\n%10lu KiB available.\n", total_sectors / 2, free_sectors / 2);
+    FRESULT res;
+    DIR dir;
+    UINT i;
+    static FILINFO fno;
+
+
+  res = f_opendir(&dir, "/");                       /* Open the directory */
+  if (res == FR_OK) {
+      for (;;) {
+          res = f_readdir(&dir, &fno);                   /* Read a directory item */
+          if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+          if (fno.fattrib & AM_DIR) {                    /* It is a directory */
+
+          } else {                                       /* It is a file. */
+              myprintf("%s\n", fno.fname);
+              for(int i = 0; fno.fname[i]; i++){
+                fno.fname[i] = tolower(fno.fname[i]);
+              }
+              if (strstr(fno.fname, ".vgm"))
+              {
+                process_vgm(fno.fname);
+              }
+          }
+      }
+      f_closedir(&dir);
+  }
+
+
+
 /*
 
   //Read 30 bytes from "test.txt" on the SD card
@@ -647,12 +1073,12 @@ void StartDefaultTask(void const * argument)
   //Now let's try to open file "test.txt"
   fres = f_open(&fil, "test.txt", FA_READ);
   if (fres != FR_OK) {
-    myprintf("f_open error (%i)\r\n", fres);
+    myprintf("f_open error (%i)\n", fres);
     //while(1);
   }
   else
   {
-    myprintf("I was able to open 'test.txt' for reading!\r\n");
+    myprintf("I was able to open 'test.txt' for reading!\n");
 
 
 
@@ -660,9 +1086,9 @@ void StartDefaultTask(void const * argument)
     //f_gets is a wrapper on f_read that does some string formatting for us
     TCHAR* rres = f_gets((TCHAR*)readBuf, 30, &fil);
     if(rres != 0) {
-    myprintf("Read string from 'test.txt' contents: %s\r\n", readBuf);
+    myprintf("Read string from 'test.txt' contents: %s\n", readBuf);
     } else {
-    myprintf("f_gets error (%i)\r\n", fres);
+    myprintf("f_gets error (%i)\n", fres);
     }
 
     //Be a tidy kiwi - don't forget to close your file!
@@ -672,9 +1098,9 @@ void StartDefaultTask(void const * argument)
   //Now let's try and write a file "write.txt"
   fres = f_open(&fil, "write.txt", FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
   if(fres == FR_OK) {
-  myprintf("I was able to open 'write.txt' for writing\r\n");
+  myprintf("I was able to open 'write.txt' for writing\n");
   } else {
-  myprintf("f_open error (%i)\r\n", fres);
+  myprintf("f_open error (%i)\n", fres);
   }
 
   //Copy in a string
@@ -682,9 +1108,9 @@ void StartDefaultTask(void const * argument)
   UINT bytesWrote;
   fres = f_write(&fil, readBuf, 19, &bytesWrote);
   if(fres == FR_OK) {
-  myprintf("Wrote %i bytes to 'write.txt'!\r\n", bytesWrote);
+  myprintf("Wrote %i bytes to 'write.txt'!\n", bytesWrote);
   } else {
-  myprintf("f_write error (%i)\r\n");
+  myprintf("f_write error (%i)\n");
   }
 
   //Be a tidy kiwi - don't forget to close your file!
@@ -734,7 +1160,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     ex: printf("Wrong parameters value: file %s on line %d\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
