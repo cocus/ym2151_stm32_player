@@ -20,7 +20,6 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "fatfs.h"
-#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -47,7 +46,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-SPI_HandleTypeDef hspi2;
+ SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim4;
 
@@ -172,7 +171,6 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -188,6 +186,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -198,12 +197,6 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
-  PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
@@ -374,51 +367,51 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LED0_Pin|YM_ICL_Pin|LED2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, BUS_D0_Pin|BUS_D1_Pin|BUS_D2_Pin|BUS_D3_Pin
+                          |BUS_D4_Pin|BUS_D5_Pin|BUS_D6_Pin|BUS_D7_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_12
-                          |GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, YM_A0_Pin|YM_WR_Pin|YM_CS_Pin|SPI_CS_Pin
+                          |YM_RD_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PC13 PC14 PC15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  /*Configure GPIO pins : LED0_Pin YM_ICL_Pin LED2_Pin */
+  GPIO_InitStruct.Pin = LED0_Pin|YM_ICL_Pin|LED2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA1 PA2 PA3
-                           PA4 PA5 PA6 PA7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+  /*Configure GPIO pins : BUS_D0_Pin BUS_D1_Pin BUS_D2_Pin BUS_D3_Pin
+                           BUS_D4_Pin BUS_D5_Pin BUS_D6_Pin BUS_D7_Pin */
+  GPIO_InitStruct.Pin = BUS_D0_Pin|BUS_D1_Pin|BUS_D2_Pin|BUS_D3_Pin
+                          |BUS_D4_Pin|BUS_D5_Pin|BUS_D6_Pin|BUS_D7_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB0 PB1 PB2 PB12
-                           PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_12
-                          |GPIO_PIN_9;
+  /*Configure GPIO pins : YM_A0_Pin YM_WR_Pin YM_CS_Pin SPI_CS_Pin
+                           YM_RD_Pin */
+  GPIO_InitStruct.Pin = YM_A0_Pin|YM_WR_Pin|YM_CS_Pin|SPI_CS_Pin
+                          |YM_RD_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA8 PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_15;
+  /*Configure GPIO pins : SD_DET_Pin USB_DET_Pin */
+  GPIO_InitStruct.Pin = SD_DET_Pin|USB_DET_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB4 PB5 PB6 PB7
-                           PB8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7
-                          |GPIO_PIN_8;
+  /*Configure GPIO pins : BTN4_Pin BTN3_Pin BTN2_Pin BTN1_Pin
+                           BTN0_Pin */
+  GPIO_InitStruct.Pin = BTN4_Pin|BTN3_Pin|BTN2_Pin|BTN1_Pin
+                          |BTN0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -548,7 +541,7 @@ void process_vgm(char* path)
         return;
     }
 
-    uint32_t read = 0;
+    unsigned int read = 0;
     fres = f_read(&fil, &header, sizeof(header), &read);
     if (fres != FR_OK)
     {
@@ -972,8 +965,6 @@ cleanup:
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
   myprintf("Hey dude!" __TIME__ " " __DATE__ "\n");
   myprintf("Running at %ld Hz\n", SystemCoreClock);
@@ -1010,7 +1001,6 @@ void StartDefaultTask(void const * argument)
 
   //some variables for FatFs
   FATFS FatFs; 	//Fatfs handle
-  FIL fil; 		//File handle
   FRESULT fres; //Result after operations
 
   //Open the file system
@@ -1038,7 +1028,6 @@ void StartDefaultTask(void const * argument)
   myprintf("SD card stats:\n%10lu KiB total drive space.\n%10lu KiB available.\n", total_sectors / 2, free_sectors / 2);
     FRESULT res;
     DIR dir;
-    UINT i;
     static FILINFO fno;
 
 
@@ -1164,4 +1153,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-

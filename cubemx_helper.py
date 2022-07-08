@@ -187,6 +187,9 @@ def process_middleware_st_fatfs(source_path):
 def process_usbdevice():
     UsbDevicePath = os.path.join(ProjectDir, UsbDeviceDirectory)
 
+    if (not os.path.exists(UsbDevicePath)):
+        return
+
     logging.debug("CubeMX: USB Device path: {0}".format(UsbDevicePath))
 
     absolute_build_dir = os.path.join(BuildDir, UsbDeviceDirectory)
