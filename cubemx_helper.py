@@ -36,13 +36,19 @@ def add_core_stuff():
         for file in filenames:
             if "startup_" in file:
                 logging.debug("CubeMX[Core]: adding startup {0}".format(file))
-                env.BuildSources(BuildDir, os.path.realpath(dirpath))
+                env.BuildSources(os.path.join(BuildDir, "Startup"), os.path.realpath(dirpath))
 
     for (dirpath, dirnames, filenames) in os.walk(os.path.join(ProjectDir, "STM32CubeIDE", "Application", "User", "Startup")):
         for file in filenames:
             if "startup_" in file:
                 logging.debug("CubeMX[Core]: adding startup {0}".format(file))
-                env.BuildSources(BuildDir, os.path.realpath(dirpath))
+                env.BuildSources(os.path.join(BuildDir, "Startup"), os.path.realpath(dirpath))
+
+    for (dirpath, dirnames, filenames) in os.walk(os.path.join(ProjectDir, "STM32CubeIDE", "Application", "User", "Core")):
+        for file in filenames:
+            if "syscalls" in file:
+                logging.debug("CubeMX[Core]: adding syscalls!!!!!! {0}".format(file))
+                env.BuildSources(os.path.join(BuildDir, "Core"), os.path.realpath(dirpath))
 
 def process_hal():
     DriversPath = os.path.join(ProjectDir, DriversDirectory)

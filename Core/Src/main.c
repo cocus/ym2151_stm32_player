@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2022 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2022 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -25,10 +25,9 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h> //for va_list var arg functions
+//#include <stdarg.h> //for va_list var arg functions
 #include <ctype.h>
 #include "vgmheader.h"
-#include "megastream.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,7 +45,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
- SPI_HandleTypeDef hspi2;
+SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim4;
 
@@ -54,7 +53,13 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
 
 osThreadId defaultTaskHandle;
+uint32_t defaultTaskBuffer[ 768 ];
+osStaticThreadDef_t defaultTaskControlBlock;
+osThreadId myTask02Handle;
+uint32_t myTask02Buffer[ 128 ];
+osStaticThreadDef_t myTask02ControlBlock;
 /* USER CODE BEGIN PV */
+volatile unsigned long ulHighFrequencyTimerTicks;
 
 /* USER CODE END PV */
 
@@ -66,6 +71,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
 void StartDefaultTask(void const * argument);
+void StartTask02(void const * argument);
 
 /* USER CODE BEGIN PFP */
 void myprintf(const char *fmt, ...);
@@ -73,7 +79,11 @@ void myprintf(const char *fmt, ...);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void myprintf(const char *fmt, ...) {
+int __io_putchar(int ch)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t*)&ch, 1, -1);
+}
+/*void myprintf(const char *fmt, ...) {
   static char buffer[256];
   va_list args;
   va_start(args, fmt);
@@ -83,7 +93,8 @@ void myprintf(const char *fmt, ...) {
   int len = strlen(buffer);
   HAL_UART_Transmit(&huart1, (uint8_t*)buffer, len, -1);
 
-}
+}*/
+#define myprintf printf
 /* USER CODE END 0 */
 
 /**
@@ -93,7 +104,7 @@ void myprintf(const char *fmt, ...) {
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+    //initialise_monitor_handles();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -124,28 +135,32 @@ int main(void)
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+    /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+    /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
+    /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+    /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 256);
+  osThreadStaticDef(defaultTask, StartDefaultTask, osPriorityHigh, 0, 768, defaultTaskBuffer, &defaultTaskControlBlock);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
+  /* definition and creation of myTask02 */
+  osThreadStaticDef(myTask02, StartTask02, osPriorityLow, 0, 128, myTask02Buffer, &myTask02ControlBlock);
+  myTask02Handle = osThreadCreate(osThread(myTask02), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+    /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -154,12 +169,12 @@ int main(void)
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+    while (1)
+    {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+    }
   /* USER CODE END 3 */
 }
 
@@ -334,11 +349,11 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 31250;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.Mode = UART_MODE_RX;
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart3) != HAL_OK)
@@ -422,21 +437,6 @@ static void MX_GPIO_Init(void)
 
 volatile int32_t waitSamples = 0;
 
-// Callback: timer has rolled over
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  // Check which version of the timer triggered this callback and toggle LED
-  if (htim == &htim4)
-  {
-   HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-   if (waitSamples)
-   {
-    waitSamples--;
-   }
-  }
-}
-
-
 #define HAL_GPIO_WriteNamedPin(name, value) HAL_GPIO_WritePin(name##_GPIO_Port, name##_Pin, value)
 
 /* Code taken from https://github.com/AidanHockey5/YM2151_Arcade_Classic_2/ */
@@ -458,11 +458,11 @@ void ym2151_write(uint8_t addr, uint8_t data)
     __NOP(); // 240ns
 
     HAL_GPIO_WriteNamedPin(YM_WR, 0); // WR Low
-    __NOP(); // 240ns
+    __NOP();                          // 240ns
     HAL_GPIO_WriteNamedPin(YM_WR, 1); // WR High
-    __NOP(); // 125ns
+    __NOP();                          // 125ns
     HAL_GPIO_WriteNamedPin(YM_A0, 1); // A0 High
-    __NOP(); // 125ns
+    __NOP();                          // 125ns
 
     HAL_GPIO_WriteNamedPin(BUS_D0, data & (1 << 0));
     HAL_GPIO_WriteNamedPin(BUS_D1, data & (1 << 1));
@@ -476,7 +476,7 @@ void ym2151_write(uint8_t addr, uint8_t data)
     __NOP(); // 240ns
 
     HAL_GPIO_WriteNamedPin(YM_WR, 0); // WR Low
-    __NOP(); // 240ns
+    __NOP();                          // 240ns
     HAL_GPIO_WriteNamedPin(YM_WR, 1); // WR High
 
     HAL_GPIO_WriteNamedPin(YM_CS, 1); // CS High
@@ -486,51 +486,36 @@ void ym2151_write(uint8_t addr, uint8_t data)
     __NOP();
     __NOP();
     __NOP();
-    __NOP(); //Busy flag on chip will be set, but we can't read it since MCU is 3.3V. 11 micros is about the time where the worst-case busy clear time is satisfied.
-             //Writing again too quickly will corrupt the data on the chip
-
+    __NOP(); // Busy flag on chip will be set, but we can't read it since MCU is 3.3V. 11 micros is about the time where the worst-case busy clear time is satisfied.
+             // Writing again too quickly will corrupt the data on the chip
 }
 
 void ym2151_reset(void)
 {
     HAL_GPIO_WriteNamedPin(YM_ICL, 0); // ICL Low
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP(); // 25us
+    osDelay(1);
     HAL_GPIO_WriteNamedPin(YM_ICL, 1); // ICL High
-
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP(); // 25us
+    osDelay(1);
 }
-
 
 void samples_wait(uint32_t samples)
 {
+    HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 0);
+
     waitSamples = samples;
-    while(waitSamples > 0) { };
+
+    ulTaskNotifyTake(0, portMAX_DELAY);
+
+    HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
 }
 
-//MegaStreamContext_t stream;
-//uint8_t buf[VGM_BUF_SIZE];
-
-uint32_t loopPos = 0; //The location of the 0x66 command
-uint16_t loopCount = 0;
-//volatile int32_t waitSamples = 0;
-uint16_t badCommandCount = 0;
-
-void process_vgm(char* path)
+vgm_header header;
+void process_vgm(char *path)
 {
-    vgm_header header;
-
-    FIL fil; 		//File handle
-    FRESULT fres; //Result after operations
+    FIL fil;      // File handle
+    FRESULT fres; // Result after operations
+    uint16_t loopCount = 0;
+    uint32_t loopPos = 0; // The location of the 0x66 command
 
     myprintf("%s: processing '%s'\n", __func__, path);
 
@@ -554,63 +539,66 @@ void process_vgm(char* path)
         goto cleanup;
     }
 
-    myprintf("  indent = 0x%x\n", header.indent);
-    myprintf("  EoF = 0x%x\n", header.EoF);
-    myprintf("  version = 0x%x\n", header.version);
-    myprintf("  sn76489Clock = 0x%x\n", header.sn76489Clock);
-    myprintf("  ym2413Clock = 0x%x\n", header.ym2413Clock);
-    myprintf("  gd3Offset = 0x%x\n", header.gd3Offset);
-    myprintf("  totalSamples = 0x%x\n", header.totalSamples);
-    myprintf("  loopOffset = 0x%x\n", header.loopOffset);
-    myprintf("  loopNumSamples = 0x%x\n", header.loopNumSamples);
-    myprintf("  rate = 0x%x\n", header.rate);
-    myprintf("  snX = 0x%x\n", header.snX);
-    myprintf("  ym2612Clock = 0x%x\n", header.ym2612Clock);
-    myprintf("  ym2151Clock = 0x%x\n", header.ym2151Clock);
-    myprintf("  vgmDataOffset = 0x%x\n", header.vgmDataOffset);
-    myprintf("  segaPCMClock = 0x%x\n", header.segaPCMClock);
-    myprintf("  spcmInterface = 0x%x\n", header.spcmInterface);
-    myprintf("  rf5C68clock = 0x%x\n", header.rf5C68clock);
-    myprintf("  ym2203clock = 0x%x\n", header.ym2203clock);
-    myprintf("  ym2608clock = 0x%x\n", header.ym2608clock);
-    myprintf("  ym2610clock = 0x%x\n", header.ym2610clock);
-    myprintf("  ym3812clock = 0x%x\n", header.ym3812clock);
-    myprintf("  ym3526clock = 0x%x\n", header.ym3526clock);
-    myprintf("  y8950clock = 0x%x\n", header.y8950clock);
-    myprintf("  ymf262clock = 0x%x\n", header.ymf262clock);
-    myprintf("  ymf278bclock = 0x%x\n", header.ymf278bclock);
-    myprintf("  ymf271clock = 0x%x\n", header.ymf271clock);
-    myprintf("  ymz280Bclock = 0x%x\n", header.ymz280Bclock);
-    myprintf("  rf5C164clock = 0x%x\n", header.rf5C164clock);
-    myprintf("  pwmclock = 0x%x\n", header.pwmclock);
-    myprintf("  ay8910clock = 0x%x\n", header.ay8910clock);
-    myprintf("  ayclockflags = 0x%x\n", header.ayclockflags);
-    myprintf("  vmlblm = 0x%x\n", header.vmlblm);
-    myprintf("  gbdgmclock = 0x%x\n", header.gbdgmclock);
-    myprintf("  nesapuclock = 0x%x\n", header.nesapuclock);
-    myprintf("  multipcmclock = 0x%x\n", header.multipcmclock);
-    myprintf("  upd7759clock = 0x%x\n", header.upd7759clock);
-    myprintf("  okim6258clock = 0x%x\n", header.okim6258clock);
-    myprintf("  ofkfcf = 0x%x\n", header.ofkfcf);
-    myprintf("  okim6295clock = 0x%x\n", header.okim6295clock);
-    myprintf("  k051649clock = 0x%x\n", header.k051649clock);
-    myprintf("  k054539clock = 0x%x\n", header.k054539clock);
-    myprintf("  huc6280clock = 0x%x\n", header.huc6280clock);
-    myprintf("  c140clock = 0x%x\n", header.c140clock);
-    myprintf("  k053260clock = 0x%x\n", header.k053260clock);
-    myprintf("  pokeyclock = 0x%x\n", header.pokeyclock);
-    myprintf("  qsoundclock = 0x%x\n", header.qsoundclock);
-    myprintf("  scspclock = 0x%x\n", header.scspclock);
-    myprintf("  extrahdrofs = 0x%x\n", header.extrahdrofs);
-    myprintf("  wonderswanclock = 0x%x\n", header.wonderswanclock);
-    myprintf("  vsuClock = 0x%x\n", header.vsuClock);
-    myprintf("  saa1099clock = 0x%x\n", header.saa1099clock);
-    myprintf("  es5503clock = 0x%x\n", header.es5503clock);
-    myprintf("  es5506clock = 0x%x\n", header.es5506clock);
-    myprintf("  eschcdxx = 0x%x\n", header.eschcdxx);
-    myprintf("  x1010clock = 0x%x\n", header.x1010clock);
-    myprintf("  c352clock = 0x%x\n", header.c352clock);
-    myprintf("  ga20clock = 0x%x\n", header.ga20clock);
+
+    myprintf("  ym2151Clock = %ld Hz\n", (unsigned int)header.ym2151Clock);
+    myprintf("  rate = %ld\n", (unsigned int)header.rate);
+    /*myprintf("  indent = 0x%x\n", (unsigned int)header.indent);
+    myprintf("  EoF = 0x%x\n", (unsigned int)header.EoF);
+    myprintf("  version = 0x%x\n", (unsigned int)header.version);
+    myprintf("  sn76489Clock = 0x%x\n", (unsigned int)header.sn76489Clock);
+    myprintf("  ym2413Clock = 0x%x\n", (unsigned int)header.ym2413Clock);
+    myprintf("  gd3Offset = 0x%x\n", (unsigned int)header.gd3Offset);
+    myprintf("  totalSamples = 0x%x\n", (unsigned int)header.totalSamples);
+    myprintf("  loopOffset = 0x%x\n", (unsigned int)header.loopOffset);
+    myprintf("  loopNumSamples = 0x%x\n", (unsigned int)header.loopNumSamples);
+    myprintf("  rate = 0x%x\n", (unsigned int)header.rate);
+    myprintf("  snX = 0x%x\n", (unsigned int)header.snX);
+    myprintf("  ym2612Clock = 0x%x\n", (unsigned int)header.ym2612Clock);
+    myprintf("  ym2151Clock = 0x%x\n", (unsigned int)header.ym2151Clock);
+    myprintf("  vgmDataOffset = 0x%x\n", (unsigned int)header.vgmDataOffset);
+    myprintf("  segaPCMClock = 0x%x\n", (unsigned int)header.segaPCMClock);
+    myprintf("  spcmInterface = 0x%x\n", (unsigned int)header.spcmInterface);
+    myprintf("  rf5C68clock = 0x%x\n", (unsigned int)header.rf5C68clock);
+    myprintf("  ym2203clock = 0x%x\n", (unsigned int)header.ym2203clock);
+    myprintf("  ym2608clock = 0x%x\n", (unsigned int)header.ym2608clock);
+    myprintf("  ym2610clock = 0x%x\n", (unsigned int)header.ym2610clock);
+    myprintf("  ym3812clock = 0x%x\n", (unsigned int)header.ym3812clock);
+    myprintf("  ym3526clock = 0x%x\n", (unsigned int)header.ym3526clock);
+    myprintf("  y8950clock = 0x%x\n", (unsigned int)header.y8950clock);
+    myprintf("  ymf262clock = 0x%x\n", (unsigned int)header.ymf262clock);
+    myprintf("  ymf278bclock = 0x%x\n", (unsigned int)header.ymf278bclock);
+    myprintf("  ymf271clock = 0x%x\n", (unsigned int)header.ymf271clock);
+    myprintf("  ymz280Bclock = 0x%x\n", (unsigned int)header.ymz280Bclock);
+    myprintf("  rf5C164clock = 0x%x\n", (unsigned int)header.rf5C164clock);
+    myprintf("  pwmclock = 0x%x\n", (unsigned int)header.pwmclock);
+    myprintf("  ay8910clock = 0x%x\n", (unsigned int)header.ay8910clock);
+    myprintf("  ayclockflags = 0x%x\n", (unsigned int)header.ayclockflags);
+    myprintf("  vmlblm = 0x%x\n", (unsigned int)header.vmlblm);
+    myprintf("  gbdgmclock = 0x%x\n", (unsigned int)header.gbdgmclock);
+    myprintf("  nesapuclock = 0x%x\n", (unsigned int)header.nesapuclock);
+    myprintf("  multipcmclock = 0x%x\n", (unsigned int)header.multipcmclock);
+    myprintf("  upd7759clock = 0x%x\n", (unsigned int)header.upd7759clock);
+    myprintf("  okim6258clock = 0x%x\n", (unsigned int)header.okim6258clock);
+    myprintf("  ofkfcf = 0x%x\n", (unsigned int)header.ofkfcf);
+    myprintf("  okim6295clock = 0x%x\n", (unsigned int)header.okim6295clock);
+    myprintf("  k051649clock = 0x%x\n", (unsigned int)header.k051649clock);
+    myprintf("  k054539clock = 0x%x\n", (unsigned int)header.k054539clock);
+    myprintf("  huc6280clock = 0x%x\n", (unsigned int)header.huc6280clock);
+    myprintf("  c140clock = 0x%x\n", (unsigned int)header.c140clock);
+    myprintf("  k053260clock = 0x%x\n", (unsigned int)header.k053260clock);
+    myprintf("  pokeyclock = 0x%x\n", (unsigned int)header.pokeyclock);
+    myprintf("  qsoundclock = 0x%x\n", (unsigned int)header.qsoundclock);
+    myprintf("  scspclock = 0x%x\n", (unsigned int)header.scspclock);
+    myprintf("  extrahdrofs = 0x%x\n", (unsigned int)header.extrahdrofs);
+    myprintf("  wonderswanclock = 0x%x\n", (unsigned int)header.wonderswanclock);
+    myprintf("  vsuClock = 0x%x\n", (unsigned int)header.vsuClock);
+    myprintf("  saa1099clock = 0x%x\n", (unsigned int)header.saa1099clock);
+    myprintf("  es5503clock = 0x%x\n", (unsigned int)header.es5503clock);
+    myprintf("  es5506clock = 0x%x\n", (unsigned int)header.es5506clock);
+    myprintf("  eschcdxx = 0x%x\n", (unsigned int)header.eschcdxx);
+    myprintf("  x1010clock = 0x%x\n", (unsigned int)header.x1010clock);
+    myprintf("  c352clock = 0x%x\n", (unsigned int)header.c352clock);
+    myprintf("  ga20clock = 0x%x\n", (unsigned int)header.ga20clock);*/
 
     if (header.vgmDataOffset == 0)
     {
@@ -621,20 +609,19 @@ void process_vgm(char* path)
         f_lseek(&fil, header.vgmDataOffset + 0x34);
     }
 
-    if(header.gd3Offset != 0)
+    if (header.gd3Offset != 0)
     {
-        loopPos = header.gd3Offset+0x14-1;
+        loopPos = header.gd3Offset + 0x14 - 1;
     }
     else
     {
-        loopPos = header.EoF+4-1;
+        loopPos = header.EoF + 4 - 1;
     }
 
     ym2151_reset();
 
-
     uint8_t breakit = 0;
-    while(breakit == 0)
+    while (breakit == 0)
     {
         uint8_t cmd;
         uint8_t data;
@@ -649,477 +636,574 @@ void process_vgm(char* path)
 
         switch (cmd)
         {
-            case 0x31:
-            {
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x4f:
-            {
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x50:
-            {
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
+        case 0x31:
+        {
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x4f:
+        {
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x50:
+        {
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
 
-            case 0x51:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x52:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x53:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x54:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
+        case 0x51:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x52:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x53:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x54:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
 
-               // myprintf("ym2151_write addr = 0x%x, data = 0x%x\r\n", addr, data);
-                ym2151_write(addr, data);
-                break;
-            }
-            case 0x55:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x56:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x57:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x58:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x59:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5a:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5b:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5c:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5d:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5e:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
-            case 0x5f:
-            {
-                f_read(&fil, &addr, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
+            // myprintf("ym2151_write addr = 0x%x, data = 0x%x\r\n", addr, data);
+            ym2151_write(addr, data);
+            break;
+        }
+        case 0x55:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x56:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x57:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x58:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x59:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5a:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5b:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5c:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5d:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5e:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x5f:
+        {
+            f_read(&fil, &addr, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
 
-            case 0x61:
+        case 0x61:
+        {
+            f_read(&fil, &nsamples, 2, &read);
+            samples_wait(nsamples);
+            break;
+        }
+        case 0x62:
+        {
+            samples_wait(735);
+            break;
+        }
+        case 0x63:
+        {
+            samples_wait(882);
+            break;
+        }
+        case 0x66:
+        {
+            // Loop
+            // if(maxLoops != 0xFFFF) //If sent to short int max, just loop forever
+            //     loopCount++;
+            //
+            if (++loopCount < 1)
             {
-                f_read(&fil, &nsamples, 2, &read);
-                samples_wait(nsamples);
-                break;
-            }
-            case 0x62:
-            {
-                samples_wait(735);
-                break;
-            }
-            case 0x63:
-            {
-                samples_wait(882);
-                break;
-            }
-            case 0x66:
-            {
-                //Loop
-                //if(maxLoops != 0xFFFF) //If sent to short int max, just loop forever
-                //    loopCount++;
-                breakit = 1;
-                break;
-            }
-            case 0x67:
-            {
-                f_read(&fil, &data, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                uint32_t pcmSize;
-                f_read(&fil, &pcmSize, 4, &read);
-                for(uint32_t i=0; i<pcmSize; i++)
+                myprintf(" looping once!\n");
+                if (header.loopOffset != 0)
                 {
-                    f_read(&fil, &data, 1, &read);
+                    f_lseek(&fil, header.loopOffset + 0x1c);
+                }
+                else
+                {
+                    if (header.vgmDataOffset == 0)
+                    {
+                        f_lseek(&fil, 0x40);
+                    }
+                    else
+                    {
+                        f_lseek(&fil, header.vgmDataOffset + 0x34);
+                    }
                 }
             }
-            case 0x68:
+            else
             {
-                myprintf("Not handled 0x68\r\n");
-                break;
+                breakit = 1;
             }
-
-
-            case 0x70:
-            case 0x71:
-            case 0x72:
-            case 0x73:
-            case 0x74:
-            case 0x75:
-            case 0x76:
-            case 0x77:
-            case 0x78:
-            case 0x79:
-            case 0x7A:
-            case 0x7B:
-            case 0x7C:
-            case 0x7D:
-            case 0x7E:
-            case 0x7F:
-            {
-                samples_wait((cmd & 0xf) + 1);
-                break;
-            }
-
-            case 0x80:
-            case 0x81:
-            case 0x82:
-            case 0x83:
-            case 0x84:
-            case 0x85:
-            case 0x86:
-            case 0x87:
-            case 0x88:
-            case 0x89:
-            case 0x8A:
-            case 0x8B:
-            case 0x8C:
-            case 0x8D:
-            case 0x8E:
-            case 0x8F:
-            {
-                break;
-            }
-
-
-            case 0x90:
-            {
-                f_read(&fil, &nsamples, 2, &read);
-                f_read(&fil, &nsamples, 2, &read);
-                break;
-            }
-            case 0x91:
-            {
-                f_read(&fil, &nsamples, 2, &read);
-                f_read(&fil, &nsamples, 2, &read);
-                break;
-            }
-            case 0x92:
+            break;
+        }
+        case 0x67:
+        {
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            uint32_t pcmSize;
+            f_read(&fil, &pcmSize, 4, &read);
+            for (uint32_t i = 0; i < pcmSize; i++)
             {
                 f_read(&fil, &data, 1, &read);
-                uint32_t streamFreq;
-                f_read(&fil, &streamFreq, 4, &read);
-                break;
             }
-            case 0x93:
-            {
-                f_read(&fil, &data, 1, &read);
-                uint32_t streamFreq;
-                f_read(&fil, &streamFreq, 4, &read);
-                f_read(&fil, &data, 1, &read);
-                f_read(&fil, &streamFreq, 4, &read);
-                break;
-            }
-            case 0x94:
-            {
-                 f_read(&fil, &data, 1, &read);
-                 break;
-            }
-            case 0x95:
-            {
-                f_read(&fil, &data, 1, &read);
-                f_read(&fil, &nsamples, 2, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
-            }
+            break;
+        }
+        case 0x68:
+        {
+            myprintf("0x68 found, at 0x%x\n", f_tell(&fil));
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
 
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
 
-            case 0xA0:
-            case 0xB0:
-            case 0xB1:
-            case 0xB2:
-            case 0xB5: //Ignore common secondary PCM chips
-            case 0xB6:
-            case 0xB7:
-            case 0xB8:
-            case 0xB9:
-            case 0xBA:
-            case 0xBB:
-            case 0xBC:
-            case 0xBD:
-            case 0xBE:
-            case 0xBF:
-            {
-                f_read(&fil, &nsamples, 2, &read);
-                break;
-            }
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
 
-            case 0xC0: //24 bit write PCM chips
-            case 0xC1:
-            case 0xC2:
-            case 0xC3:
-            case 0xC4:
-            case 0xC5:
-            case 0xC6:
-            case 0xC7:
-            case 0xC8:
-            case 0xD0:
-            case 0xD1:
-            case 0xD2:
-            case 0xD3:
-            case 0xD4:
-            case 0xD5:
-            case 0xD6:
+            uint32_t pcmSize = 0;
+            f_read(&fil, &pcmSize, 3, &read);
+            for (uint32_t i = 0; i < pcmSize; i++)
             {
                 f_read(&fil, &data, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                f_read(&fil, &data, 1, &read);
-                break;
             }
+            break;
+        }
 
-            case 0xE0:
-            {
-                uint32_t dummy;
-                f_read(&fil, &dummy, 4, &read);
-                break;
-            }
-            case 0xE1:
-            {
-                uint32_t dummy;
-                f_read(&fil, &dummy, 4, &read);
-                break;
-            }
+        case 0x70:
+        case 0x71:
+        case 0x72:
+        case 0x73:
+        case 0x74:
+        case 0x75:
+        case 0x76:
+        case 0x77:
+        case 0x78:
+        case 0x79:
+        case 0x7A:
+        case 0x7B:
+        case 0x7C:
+        case 0x7D:
+        case 0x7E:
+        case 0x7F:
+        {
+            samples_wait((cmd & 0xf) + 1);
+            break;
+        }
 
-            default:
-            {
-                myprintf("Unhandled case 0x%x\r\n", cmd);
-                break;
-            }
+        case 0x80:
+        case 0x81:
+        case 0x82:
+        case 0x83:
+        case 0x84:
+        case 0x85:
+        case 0x86:
+        case 0x87:
+        case 0x88:
+        case 0x89:
+        case 0x8A:
+        case 0x8B:
+        case 0x8C:
+        case 0x8D:
+        case 0x8E:
+        case 0x8F:
+        {
+            break;
+        }
+
+        case 0x90:
+        {
+            f_read(&fil, &nsamples, 2, &read);
+            f_read(&fil, &nsamples, 2, &read);
+            break;
+        }
+        case 0x91:
+        {
+            f_read(&fil, &nsamples, 2, &read);
+            f_read(&fil, &nsamples, 2, &read);
+            break;
+        }
+        case 0x92:
+        {
+            f_read(&fil, &data, 1, &read);
+            uint32_t streamFreq;
+            f_read(&fil, &streamFreq, 4, &read);
+            break;
+        }
+        case 0x93:
+        {
+            f_read(&fil, &data, 1, &read);
+            uint32_t streamFreq;
+            f_read(&fil, &streamFreq, 4, &read);
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &streamFreq, 4, &read);
+            break;
+        }
+        case 0x94:
+        {
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+        case 0x95:
+        {
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &nsamples, 2, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+
+        case 0xA0:
+        case 0xB0:
+        case 0xB1:
+        case 0xB2:
+        case 0xB5: // Ignore common secondary PCM chips
+        case 0xB6:
+        case 0xB7:
+        case 0xB8:
+        case 0xB9:
+        case 0xBA:
+        case 0xBB:
+        case 0xBC:
+        case 0xBD:
+        case 0xBE:
+        case 0xBF:
+        {
+            f_read(&fil, &nsamples, 2, &read);
+            break;
+        }
+
+        case 0xC0: // 24 bit write PCM chips
+        case 0xC1:
+        case 0xC2:
+        case 0xC3:
+        case 0xC4:
+        case 0xC5:
+        case 0xC6:
+        case 0xC7:
+        case 0xC8:
+        case 0xD0:
+        case 0xD1:
+        case 0xD2:
+        case 0xD3:
+        case 0xD4:
+        case 0xD5:
+        case 0xD6:
+        {
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            f_read(&fil, &data, 1, &read);
+            break;
+        }
+
+        case 0xE0:
+        {
+            uint32_t dummy;
+            f_read(&fil, &dummy, 4, &read);
+            break;
+        }
+        case 0xE1:
+        {
+            uint32_t dummy;
+            f_read(&fil, &dummy, 4, &read);
+            break;
+        }
+
+        default:
+        {
+            myprintf("Unhandled case 0x%x\n", cmd);
+            break;
+        }
         }
     }
+
+
+    ym2151_reset();
+
 
 cleanup:
     f_close(&fil);
 }
-
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
+ * @brief  Function implementing the defaultTask thread.
+ * @param  argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
-  myprintf("Hey dude!" __TIME__ " " __DATE__ "\n");
-  myprintf("Running at %ld Hz\n", SystemCoreClock);
+    myprintf("Hey dude! " __TIME__ " " __DATE__ "\n");
+    myprintf("Running at %ld Hz\n", SystemCoreClock);
 
-  HAL_Delay(1000); //a short delay is important to let the SD card settle
-
+    HAL_Delay(1000); // a short delay is important to let the SD card settle
 
     HAL_GPIO_WriteNamedPin(YM_RD, 1);
     HAL_GPIO_WriteNamedPin(YM_WR, 1);
     HAL_GPIO_WriteNamedPin(YM_CS, 1);
     HAL_GPIO_WriteNamedPin(YM_A0, 0);
 
-  uint32_t ARR_RegisterValue;
-  uint32_t PeriodTicks;
-  uint32_t Prescalerfactor;
-  uint32_t period_cyc;
+    uint32_t ARR_RegisterValue;
+    uint32_t PeriodTicks;
+    uint32_t Prescalerfactor;
+    uint32_t period_cyc;
 
-  period_cyc = SystemCoreClock / 44100;
-  Prescalerfactor = (period_cyc / 0x10000) + 1;
-  __HAL_TIM_SET_PRESCALER(&htim4, Prescalerfactor - 1);
-  PeriodTicks = period_cyc / Prescalerfactor;
+    period_cyc = SystemCoreClock / 44100;
+    Prescalerfactor = (period_cyc / 0x10000) + 1;
+    __HAL_TIM_SET_PRESCALER(&htim4, Prescalerfactor - 1);
+    PeriodTicks = period_cyc / Prescalerfactor;
 
-  if (PeriodTicks > 0) {
-    // The register specifies the maximum value, so the period is really one tick longer
-    ARR_RegisterValue = PeriodTicks - 1;
-  } else {
-    // But do not underflow in case a zero period was given somehow.
-    ARR_RegisterValue = 0;
-  }
-  __HAL_TIM_SET_AUTORELOAD(&htim4, ARR_RegisterValue);
+    if (PeriodTicks > 0)
+    {
+        // The register specifies the maximum value, so the period is really one tick longer
+        ARR_RegisterValue = PeriodTicks - 1;
+    }
+    else
+    {
+        // But do not underflow in case a zero period was given somehow.
+        ARR_RegisterValue = 0;
+    }
+    __HAL_TIM_SET_AUTORELOAD(&htim4, ARR_RegisterValue);
+    // Start timer in Time base mode. Required when there is no channel used but only update interrupt.
+    HAL_TIM_Base_Start_IT(&htim4);
 
-  // Start timer in Time base mode. Required when there is no channel used but only update interrupt.
-  HAL_TIM_Base_Start_IT(&htim4);
+    // some variables for FatFs
+    FATFS FatFs;  // Fatfs handle
+    FRESULT fres; // Result after operations
 
-  //some variables for FatFs
-  FATFS FatFs; 	//Fatfs handle
-  FRESULT fres; //Result after operations
+    // Open the file system
+    fres = f_mount(&FatFs, "", 1); // 1=mount now
+    if (fres != FR_OK)
+    {
+        myprintf("f_mount error (%i)\n", fres);
+        while (1)
+            ;
+    }
 
-  //Open the file system
-  fres = f_mount(&FatFs, "", 1); //1=mount now
-  if (fres != FR_OK) {
-    myprintf("f_mount error (%i)\n", fres);
-    while(1);
-  }
+    // Let's get some statistics from the SD card
+    DWORD free_clusters, free_sectors, total_sectors;
 
-  //Let's get some statistics from the SD card
-  DWORD free_clusters, free_sectors, total_sectors;
+    FATFS *getFreeFs;
 
-  FATFS* getFreeFs;
+    fres = f_getfree("", &free_clusters, &getFreeFs);
+    if (fres != FR_OK)
+    {
+        myprintf("f_getfree error (%i)\n", fres);
+        while (1)
+            ;
+    }
 
-  fres = f_getfree("", &free_clusters, &getFreeFs);
-  if (fres != FR_OK) {
-    myprintf("f_getfree error (%i)\n", fres);
-    while(1);
-  }
+    // Formula comes from ChaN's documentation
+    total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
+    free_sectors = free_clusters * getFreeFs->csize;
 
-  //Formula comes from ChaN's documentation
-  total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
-  free_sectors = free_clusters * getFreeFs->csize;
-
-  myprintf("SD card stats:\n%10lu KiB total drive space.\n%10lu KiB available.\n", total_sectors / 2, free_sectors / 2);
+    myprintf("SD card stats:\n%10lu KiB total drive space.\n%10lu KiB available.\n", total_sectors / 2, free_sectors / 2);
     FRESULT res;
     DIR dir;
     static FILINFO fno;
 
-
-  res = f_opendir(&dir, "/");                       /* Open the directory */
-  if (res == FR_OK) {
-      for (;;) {
-          res = f_readdir(&dir, &fno);                   /* Read a directory item */
-          if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
-          if (fno.fattrib & AM_DIR) {                    /* It is a directory */
-
-          } else {                                       /* It is a file. */
-              myprintf("%s\n", fno.fname);
-              for(int i = 0; fno.fname[i]; i++){
-                fno.fname[i] = tolower(fno.fname[i]);
-              }
-              if (strstr(fno.fname, ".vgm"))
-              {
-                process_vgm(fno.fname);
-              }
-          }
-      }
-      f_closedir(&dir);
-  }
-
-
-
-/*
-
-  //Read 30 bytes from "test.txt" on the SD card
-  BYTE readBuf[30];
-
-  //Now let's try to open file "test.txt"
-  fres = f_open(&fil, "test.txt", FA_READ);
-  if (fres != FR_OK) {
-    myprintf("f_open error (%i)\n", fres);
-    //while(1);
-  }
-  else
-  {
-    myprintf("I was able to open 'test.txt' for reading!\n");
-
-
-
-    //We can either use f_read OR f_gets to get data out of files
-    //f_gets is a wrapper on f_read that does some string formatting for us
-    TCHAR* rres = f_gets((TCHAR*)readBuf, 30, &fil);
-    if(rres != 0) {
-    myprintf("Read string from 'test.txt' contents: %s\n", readBuf);
-    } else {
-    myprintf("f_gets error (%i)\n", fres);
+    for (;;)
+    {
+        res = f_opendir(&dir, "/"); /* Open the directory */
+        if (res == FR_OK)
+        {
+            for (;;)
+            {
+                res = f_readdir(&dir, &fno); /* Read a directory item */
+                if (res != FR_OK || fno.fname[0] == 0)
+                    break; /* Break on error or end of dir */
+                if (fno.fattrib & AM_DIR)
+                { /* It is a directory */
+                }
+                else
+                { /* It is a file. */
+                    myprintf("%s\n", fno.fname);
+                    if (strstr(fno.fname, ".VGM"))
+                    {
+                        process_vgm(fno.fname);
+                    }
+                }
+            }
+            f_closedir(&dir);
+        }
     }
 
-    //Be a tidy kiwi - don't forget to close your file!
-    f_close(&fil);
-  }
+    /*
 
-  //Now let's try and write a file "write.txt"
-  fres = f_open(&fil, "write.txt", FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
-  if(fres == FR_OK) {
-  myprintf("I was able to open 'write.txt' for writing\n");
-  } else {
-  myprintf("f_open error (%i)\n", fres);
-  }
+      //Read 30 bytes from "test.txt" on the SD card
+      BYTE readBuf[30];
 
-  //Copy in a string
-  strncpy((char*)readBuf, "a new file is made!", 19);
-  UINT bytesWrote;
-  fres = f_write(&fil, readBuf, 19, &bytesWrote);
-  if(fres == FR_OK) {
-  myprintf("Wrote %i bytes to 'write.txt'!\n", bytesWrote);
-  } else {
-  myprintf("f_write error (%i)\n");
-  }
-
-  //Be a tidy kiwi - don't forget to close your file!
-  f_close(&fil);
+      //Now let's try to open file "test.txt"
+      fres = f_open(&fil, "test.txt", FA_READ);
+      if (fres != FR_OK) {
+        myprintf("f_open error (%i)\n", fres);
+        //while(1);
+      }
+      else
+      {
+        myprintf("I was able to open 'test.txt' for reading!\n");
 
 
+
+        //We can either use f_read OR f_gets to get data out of files
+        //f_gets is a wrapper on f_read that does some string formatting for us
+        TCHAR* rres = f_gets((TCHAR*)readBuf, 30, &fil);
+        if(rres != 0) {
+        myprintf("Read string from 'test.txt' contents: %s\n", readBuf);
+        } else {
+        myprintf("f_gets error (%i)\n", fres);
+        }
+
+        //Be a tidy kiwi - don't forget to close your file!
+        f_close(&fil);
+      }
+
+      //Now let's try and write a file "write.txt"
+      fres = f_open(&fil, "write.txt", FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
+      if(fres == FR_OK) {
+      myprintf("I was able to open 'write.txt' for writing\n");
+      } else {
+      myprintf("f_open error (%i)\n", fres);
+      }
+
+      //Copy in a string
+      strncpy((char*)readBuf, "a new file is made!", 19);
+      UINT bytesWrote;
+      fres = f_write(&fil, readBuf, 19, &bytesWrote);
+      if(fres == FR_OK) {
+      myprintf("Wrote %i bytes to 'write.txt'!\n", bytesWrote);
+      } else {
+      myprintf("f_write error (%i)\n");
+      }
+
+      //Be a tidy kiwi - don't forget to close your file!
+      f_close(&fil);
+
+
+    */
+
+    // We're done, so de-mount the drive
+    f_mount(NULL, "", 0);
+
+    /* Infinite loop */
+    for (;;)
+    {
+        osDelay(100);
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartTask02 */
+/**
+* @brief Function implementing the myTask02 thread.
+* @param argument: Not used
+* @retval None
 */
-
-
-  //We're done, so de-mount the drive
-  f_mount(NULL, "", 0);
-
-
+/* USER CODE END Header_StartTask02 */
+void StartTask02(void const * argument)
+{
+  /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
   for(;;)
   {
-    osDelay(100);
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+    osDelay(500);
   }
-  /* USER CODE END 5 */
+  /* USER CODE END StartTask02 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM1 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM1) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+    else if (htim == &htim4)
+    {
+        if (waitSamples)
+        {
+            waitSamples--;
+            if (waitSamples == 0)
+            {
+                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+                portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+            }
+        }
+    }
+  /* USER CODE END Callback 1 */
 }
 
 /**
@@ -1129,11 +1213,11 @@ void StartDefaultTask(void const * argument)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+    /* User can add his own implementation to report the HAL error return state */
+    __disable_irq();
+    while (1)
+    {
+    }
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -1148,8 +1232,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\n", file, line) */
+    /* User can add his own implementation to report the file name and line number,
+       ex: printf("Wrong parameters value: file %s on line %d\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

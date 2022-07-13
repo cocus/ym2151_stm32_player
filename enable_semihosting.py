@@ -18,6 +18,7 @@ def skip_syscalls(node):
 
     return node
 
+print("HI!!!!")
 env.AddBuildMiddleware(skip_syscalls)
 
 ## In order to use this, add the following line to your platformio.ini in an appropriate environment:
